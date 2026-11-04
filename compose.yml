@@ -1,0 +1,37 @@
+
+services:
+  web:
+    build: .
+    command: >
+      bash -lc "bundle install &&
+      bin/rails db:prepare &&
+      bin/rails server -b 0.0.0.0"
+    volumes:
+      - .:/rails
+      - bundle:/usr/local/bundle
+    ports:
+      - "3000:3000"
+    environment:
+      RAILS_ENV: development
+      RAILS_MAX_THREADS: 5
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: forecast-app_development
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  bundle:
+  postgres_data:
