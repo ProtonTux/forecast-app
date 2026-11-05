@@ -1,5 +1,4 @@
 class WeatherController < ApplicationController
-
   def index
     @query = params[:query].to_s.strip
     return if @query.blank?
@@ -22,5 +21,4 @@ class WeatherController < ApplicationController
   def weather_service
     @weather_service ||= ::Weather::WeatherService.new
   end
-
 end
