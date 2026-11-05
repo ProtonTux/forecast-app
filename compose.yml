@@ -14,8 +14,11 @@ services:
     environment:
       RAILS_ENV: development
       RAILS_MAX_THREADS: 5
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   db:
@@ -32,6 +35,17 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: valkey/valkey:8
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   bundle:
   postgres_data:
+  redis_data:

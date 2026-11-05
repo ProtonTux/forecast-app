@@ -20,7 +20,16 @@ Rails.application.configure do
 
   # Show full error reports.
   config.consider_all_requests_local = true
-  config.cache_store = :null_store
+
+  # Use Redis for caching so tests exercise the same backend as development and production.
+  config.cache_store = :redis_cache_store, {
+    url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"),
+    namespace: "forecast_app:cache:test",
+    connect_timeout: 1,
+    read_timeout: 1,
+    write_timeout: 1,
+    reconnect_attempts: 1
+  }
 
   # Render exception templates for rescuable exceptions and raise for other exceptions.
   config.action_dispatch.show_exceptions = :rescuable

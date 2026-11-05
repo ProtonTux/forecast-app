@@ -1,0 +1,12 @@
+<%= form_with url: weather_path, method: :get, class: "mb-4" do |form| %>
+  <div class="mb-3">
+    <%= form.label :query, "Address or ZIP/postal code", class: "form-label" %>
+    <%= form.text_field :query,
+                        value: query,
+                        placeholder: "e.g. 1801 West International Speedway Blvd, Daytona Beach, Florida, United States 32114",
+                        autofocus: true,
+                        class: "form-control form-control-lg text-center" %>
+  </div>
+
+  <%= form.submit "Get forecast", class: "btn btn-primary btn-lg" %>
+<% end %>

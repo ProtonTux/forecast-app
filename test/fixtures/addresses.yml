@@ -1,0 +1,23 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  zip_code: MyString
+  country_code: MyString
+  city: MyString
+  region_state: MyString
+  latitude: 9.99
+  longitude: 9.99
+  timezone: MyString
+  geocoding_source: MyString
+  geocoded_at: 2026-11-04 02:17:06
+
+two:
+  zip_code: MyString
+  country_code: MyString
+  city: MyString
+  region_state: MyString
+  latitude: 9.99
+  longitude: 9.99
+  timezone: MyString
+  geocoding_source: MyString
+  geocoded_at: 2026-11-04 02:17:06

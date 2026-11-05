@@ -1,0 +1,162 @@
+<% location = forecast[:location] || {} %>
+<% time_zone = location[:timezone] %>
+
+<% if forecast.key?(:cache_hit) %>
+  <p class="mb-2">
+    <% if forecast[:cache_hit] %>
+      <span class="badge text-bg-success" title="Served from the forecast cache">Cached</span>
+    <% else %>
+      <span class="badge text-bg-warning" title="Fetched from the weather providers">New request</span>
+    <% end %>
+  </p>
+<% end %>
+
+<h2><%= weather_location_name(location) %></h2>
+
+<p>
+  Coordinates: <%= weather_coordinates(location) %><br>
+  Time zone: <%= time_zone.presence || "Unknown" %><br>
+  Sources: <%= Array(forecast[:sources]).map { |source| weather_source_name(source) }.join(", ").presence || "Unknown" %>
+</p>
+
+<% if forecast[:provider_errors].present? %>
+  <h3>Partial data</h3>
+  <ul>
+    <% forecast[:provider_errors].each do |provider, message| %>
+      <li><%= weather_source_name(provider) %>: <%= message %></li>
+    <% end %>
+  </ul>
+<% end %>
+
+<% if forecast[:current].present? %>
+  <% current = forecast[:current] %>
+
+  <h3>Current conditions</h3>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-striped table-bordered align-middle">
+      <tbody>
+        <tr>
+          <th scope="row">Time</th>
+          <td><%= weather_time(current[:time], time_zone) %></td>
+        </tr>
+        <tr>
+          <th scope="row">Condition</th>
+          <td><%= current[:condition].presence || "—" %></td>
+        </tr>
+        <tr>
+          <th scope="row">Temperature</th>
+          <td><%= weather_measurement(current[:temperature_c], "°C") %></td>
+        </tr>
+        <tr>
+          <th scope="row">Feels like</th>
+          <td><%= weather_measurement(current[:apparent_temperature_c], "°C") %></td>
+        </tr>
+        <tr>
+          <th scope="row">Humidity</th>
+          <td><%= weather_percentage(current[:humidity]) %></td>
+        </tr>
+        <tr>
+          <th scope="row">Wind</th>
+          <td><%= weather_wind(current[:wind_speed_ms], current[:wind_direction_deg]) %></td>
+        </tr>
+        <tr>
+          <th scope="row">Wind gusts</th>
+          <td><%= weather_measurement(current[:wind_gust_ms], "m/s") %></td>
+        </tr>
+        <tr>
+          <th scope="row">Precipitation</th>
+          <td><%= weather_measurement(current[:precipitation_mm], "mm") %></td>
+        </tr>
+        <tr>
+          <th scope="row">Pressure</th>
+          <td><%= weather_measurement(current[:pressure_hpa], "hPa", precision: 0) %></td>
+        </tr>
+        <tr>
+          <th scope="row">Visibility</th>
+          <td><%= weather_measurement(current[:visibility_km], "km") %></td>
+        </tr>
+        <tr>
+          <th scope="row">Cloud cover</th>
+          <td><%= weather_percentage(current[:cloud_cover]) %></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+<% end %>
+
+<h3>Hourly forecast</h3>
+
+<% hourly = Array(forecast[:hourly]).first(24) %>
+
+<% if hourly.any? %>
+  <div class="table-responsive">
+    <table class="table table-sm table-striped table-bordered align-middle">
+      <thead>
+        <tr>
+          <th scope="col">Time</th>
+          <th scope="col">Condition</th>
+          <th scope="col">Temperature</th>
+          <th scope="col">Precipitation</th>
+          <th scope="col">Chance</th>
+          <th scope="col">Wind</th>
+          <th scope="col">Humidity</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% hourly.each do |hour| %>
+          <tr>
+            <td><%= weather_time(hour[:time], time_zone) %></td>
+            <td><%= hour[:condition].presence || "—" %></td>
+            <td><%= weather_measurement(hour[:temperature_c], "°C") %></td>
+            <td><%= weather_measurement(hour[:precipitation_mm], "mm") %></td>
+            <td><%= weather_percentage(hour[:precipitation_probability]) %></td>
+            <td><%= weather_wind(hour[:wind_speed_ms], hour[:wind_direction_deg]) %></td>
+            <td><%= weather_percentage(hour[:humidity]) %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% else %>
+  <p>No hourly forecast data is available.</p>
+<% end %>
+
+<h3>Daily forecast</h3>
+
+<% daily = Array(forecast[:daily]).first(7) %>
+
+<% if daily.any? %>
+  <div class="table-responsive">
+    <table class="table table-sm table-striped table-bordered align-middle">
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Condition</th>
+          <th scope="col">High</th>
+          <th scope="col">Low</th>
+          <th scope="col">Precipitation</th>
+          <th scope="col">Chance</th>
+          <th scope="col">Max wind</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% daily.each do |day| %>
+          <tr>
+            <td><%= weather_date(day[:date]) %></td>
+            <td><%= day[:condition].presence || "—" %></td>
+            <td><%= weather_measurement(day[:high_c], "°C") %></td>
+            <td><%= weather_measurement(day[:low_c], "°C") %></td>
+            <td><%= weather_measurement(day[:precipitation_mm], "mm") %></td>
+            <td><%= weather_percentage(day[:precipitation_probability]) %></td>
+            <td><%= weather_measurement(day[:wind_speed_max_ms], "m/s") %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% else %>
+  <p>No daily forecast data is available.</p>
+<% end %>
+
+<p>Generated at <%= weather_time(forecast[:generated_at], time_zone) %>.</p>

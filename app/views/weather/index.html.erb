@@ -1,0 +1,13 @@
+<% content_for :title, "Weather forecast" %>
+
+<main>
+  <h1 class="mb-4">Weather forecast</h1>
+
+  <%= render "form", query: @query %>
+
+  <% if @error.present? %>
+    <p role="alert" class="alert alert-danger"><strong><%= @error %></strong></p>
+  <% end %>
+
+  <%= render "forecast", forecast: @forecast if @forecast.present? %>
+</main>
