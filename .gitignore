@@ -19,6 +19,9 @@
 # Ignore SimpleCov coverage reports.
 /coverage
 
+# Ignore local design and performance notes.
+/docs
+
 # Ignore pidfiles, but keep the directory.
 /tmp/pids/*
 !/tmp/pids/

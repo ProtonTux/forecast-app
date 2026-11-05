@@ -19,17 +19,13 @@
   Sources: <%= Array(forecast[:sources]).map { |source| weather_source_name(source) }.join(", ").presence || "Unknown" %>
 </p>
 
-<% if forecast[:provider_errors].present? %>
-  <h3>Partial data</h3>
-  <ul>
-    <% forecast[:provider_errors].each do |provider, message| %>
-      <li><%= weather_source_name(provider) %>: <%= message %></li>
-    <% end %>
-  </ul>
-<% end %>
-
 <% if forecast[:current].present? %>
   <% current = forecast[:current] %>
+
+  <% if current[:temperature_c].present? %>
+    <h3 class="text-info mb-1"><b>Current temperature</b></h3>
+    <p class="display-6 fw-semibold mb-3"><%= weather_measurement(current[:temperature_c], "°C") %></p>
+  <% end %>
 
   <h3>Current conditions</h3>
 
@@ -160,3 +156,13 @@
 <% end %>
 
 <p>Generated at <%= weather_time(forecast[:generated_at], time_zone) %>.</p>
+
+<% if forecast[:provider_errors].present? %>
+  <h3>Partial data</h3>
+  <ul>
+    <% forecast[:provider_errors].each do |provider, message| %>
+      <li><%= weather_source_name(provider) %>: <%= message %></li>
+    <% end %>
+  </ul>
+<% end %>
+

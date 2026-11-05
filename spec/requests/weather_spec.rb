@@ -81,6 +81,7 @@ RSpec.describe "Weather interface", type: :request do
     expect(response).to have_http_status(:ok)
     expect(response.body).to include("Daytona Beach, Florida, 32114, US")
     expect(response.body).to include("29.1858, -81.0700")
+    expect(response.body).to include("Current temperature")
     expect(response.body).to include("Current conditions")
     expect(response.body).to include("25.0 °C")
     expect(response.body).to include("Hourly forecast")
