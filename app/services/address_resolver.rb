@@ -4,7 +4,8 @@ require "net/http"
 require "uri"
 
 # Resolves a free-form user address with the OpenStreetMap Nominatim API and
-# returns an Address record with coordinates and postal code.
+# returns an immutable ResolvedAddress value object with coordinates and postal
+# code.
 #
 # Nominatim's public service usage requirements are enforced here:
 #   * a descriptive User-Agent identifies this application,
@@ -19,6 +20,7 @@ class AddressResolver
   DEFAULT_BASE_URL = "https://nominatim.openstreetmap.org"
   DEFAULT_USER_AGENT = "ForecastApp/1.0 (weather forecast application)"
   DEFAULT_CACHE_TTL = 30.days
+  DEFAULT_RACE_CONDITION_TTL = 10.seconds
   RATE_LIMIT_INTERVAL = 1.0
   SEARCH_PATH = "/search"
   CACHE_PREFIX = "address_resolver:nominatim:v1"
@@ -59,13 +61,15 @@ class AddressResolver
     end
   end
 
-  attr_reader :base_url, :user_agent, :cache, :cache_ttl, :http_client, :rate_limit_interval
+  attr_reader :base_url, :user_agent, :cache, :cache_ttl, :http_client,
+              :rate_limit_interval, :race_condition_ttl
 
   def initialize(
     base_url: nil,
     user_agent: nil,
     cache: nil,
     cache_ttl: nil,
+    race_condition_ttl: nil,
     http_client: nil,
     rate_limit_interval: RATE_LIMIT_INTERVAL
   )
@@ -74,29 +78,32 @@ class AddressResolver
     @user_agent = user_agent.presence || config&.nominatim_user_agent.presence || DEFAULT_USER_AGENT
     @cache = cache || Rails.cache
     @cache_ttl = cache_ttl || config&.nominatim_cache_ttl || DEFAULT_CACHE_TTL
+    @race_condition_ttl = race_condition_ttl ||
+                          config&.race_condition_ttl ||
+                          DEFAULT_RACE_CONDITION_TTL
     @http_client = http_client
     @rate_limit_interval = rate_limit_interval.to_f
   end
 
-  # Returns an Address, or nil when Nominatim has no match. Successful
+  # Returns a ResolvedAddress, or nil when Nominatim has no match. Successful
   # lookups are cached so repeated searches do not hit the public endpoint.
-  def resolve(query, persist: true)
+  # Empty results are not cached so a corrected query is retried immediately.
+  def resolve(query)
     normalized_query = normalize_query(query)
     return nil if normalized_query.empty?
 
-    key = cache_key(normalized_query)
-    result = cache.read(key)
-
-    if result.blank?
-      result = fetch_result(normalized_query)
-      cache.write(key, result, expires_in: cache_ttl) if result.present?
+    result = cache.fetch(
+      cache_key(normalized_query),
+      expires_in: cache_ttl,
+      race_condition_ttl: race_condition_ttl,
+      skip_nil: true
+    ) do
+      fetch_result(normalized_query)
     end
 
     return nil if result.blank?
 
-    address = build_address(result)
-    persist_address(address) if persist && address
-    address
+    build_address(result)
   end
   alias call resolve
 
@@ -230,7 +237,7 @@ class AddressResolver
     longitude = numeric(result["lon"])
     return nil if latitude.nil? || longitude.nil?
 
-    attributes = {
+    ResolvedAddress.new(
       zip_code: data["postcode"],
       country_code: data["country_code"]&.upcase,
       city: data["city"] || data["town"] || data["village"] || data["municipality"] || data["hamlet"],
@@ -240,18 +247,7 @@ class AddressResolver
       timezone: result["timezone"],
       geocoding_source: "nominatim",
       geocoded_at: Time.current
-    }.compact
-
-    address = Address.find_or_initialize_by(latitude: latitude, longitude: longitude)
-    address.assign_attributes(attributes)
-    address
-  end
-
-  def persist_address(address)
-    return address unless defined?(Address) && address.is_a?(Address)
-
-    address.save! if address.new_record? || address.changed?
-    address
+    )
   end
 
   def numeric(value)

@@ -119,7 +119,7 @@ RSpec.describe Weather::WeatherService do
 
     it "includes address metadata when an address is supplied" do
       address = instance_double(
-        Address,
+        ResolvedAddress,
         latitude: 29.1858,
         longitude: -81.0700,
         zip_code: "32114",
@@ -186,6 +186,22 @@ RSpec.describe Weather::WeatherService do
 
     it "defaults to a 30 minute forecast cache TTL" do
       expect(build_service.cache_ttl).to eq(30.minutes)
+    end
+
+    it "protects the forecast cache against stampedes" do
+      service = described_class.new(
+        address_resolver: nil,
+        provider_factory: FakeFactory.new([ alpha ]),
+        cache: cache,
+        race_condition_ttl: 7.seconds
+      )
+
+      expect(cache).to receive(:fetch).with(
+        anything,
+        hash_including(expires_in: 30.minutes, race_condition_ttl: 7.seconds)
+      ).and_call_original
+
+      service.forecast_for(latitude: 10, longitude: 20)
     end
 
     it "expires the forecast after the cache TTL" do
@@ -265,7 +281,7 @@ RSpec.describe Weather::WeatherService do
     it "resolves a free-form address before requesting the forecast" do
       resolver = instance_double(AddressResolver)
       address = instance_double(
-        Address,
+        ResolvedAddress,
         latitude: 29.1858,
         longitude: -81.0700,
         zip_code: "32114",
@@ -282,11 +298,11 @@ RSpec.describe Weather::WeatherService do
       expect(resolver).to have_received(:resolve).with(address_query)
     end
 
-    it "resolves an Address passed directly" do
+    it "resolves a ResolvedAddress passed directly" do
       resolver = instance_double(AddressResolver)
       allow(resolver).to receive(:resolve)
       address = instance_double(
-        Address,
+        ResolvedAddress,
         latitude: 1.0,
         longitude: 2.0,
         zip_code: nil,

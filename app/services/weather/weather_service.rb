@@ -5,12 +5,14 @@ module Weather
   class WeatherService
     CACHE_PREFIX = "weather:forecast:v1"
     DEFAULT_CACHE_TTL = 30.minutes
+    DEFAULT_RACE_CONDITION_TTL = 10.seconds
 
     class Error < StandardError; end
     class AddressNotFoundError < Error; end
     class AllProvidersFailedError < Error; end
 
-    attr_reader :address_resolver, :provider_factory, :cache, :cache_ttl
+    attr_reader :address_resolver, :provider_factory, :cache, :cache_ttl,
+                :race_condition_ttl
 
     def initialize(
       address_resolver: AddressResolver.new,
@@ -18,6 +20,7 @@ module Weather
       providers: nil,
       cache: nil,
       cache_ttl: nil,
+      race_condition_ttl: nil,
       normalizer: Weather::Normalizer.new,
       http_client: nil,
       user_agent: nil
@@ -31,14 +34,15 @@ module Weather
       )
       @cache = cache || Rails.cache
       @cache_ttl = cache_ttl || configured_cache_ttl
+      @race_condition_ttl = race_condition_ttl || configured_race_condition_ttl
     end
 
     def self.forecast(input = nil, latitude: nil, longitude: nil, **options)
       new(**options).forecast(input, latitude: latitude, longitude: longitude)
     end
 
-    # Accepts an Address, a free-form address String, or a Hash/object with
-    # latitude and longitude. Coordinates can also be passed as keywords.
+    # Accepts a ResolvedAddress, a free-form address String, or a Hash/object
+    # with latitude and longitude. Coordinates can also be passed as keywords.
     def forecast(input = nil, latitude: nil, longitude: nil)
       if latitude.present? && longitude.present?
         return forecast_for(latitude: latitude, longitude: longitude)
@@ -70,7 +74,11 @@ module Weather
 
       key = cache_key(latitude, longitude)
       cache_hit = true
-      result = cache.fetch(key, expires_in: cache_ttl) do
+      result = cache.fetch(
+        key,
+        expires_in: cache_ttl,
+        race_condition_ttl: race_condition_ttl
+      ) do
         cache_hit = false
         build_forecast(latitude: latitude, longitude: longitude, address: address)
       end
@@ -89,6 +97,13 @@ module Weather
       configured = app ? Rails.application.config.x.weather&.cache_ttl : nil
 
       configured.presence || DEFAULT_CACHE_TTL
+    end
+
+    def configured_race_condition_ttl
+      app = defined?(Rails) && Rails.respond_to?(:application) && Rails.application
+      configured = app ? Rails.application.config.x.weather&.race_condition_ttl : nil
+
+      configured.presence || DEFAULT_RACE_CONDITION_TTL
     end
 
     def resolve_address(input)

@@ -10,21 +10,8 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_04_021706) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_09_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
-  create_table "addresses", force: :cascade do |t|
-    t.string "zip_code"
-    t.string "country_code"
-    t.string "city"
-    t.string "region_state"
-    t.decimal "latitude"
-    t.decimal "longitude"
-    t.string "timezone"
-    t.string "geocoding_source"
-    t.datetime "geocoded_at"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-  end
 end

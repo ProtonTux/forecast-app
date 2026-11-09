@@ -34,11 +34,10 @@ RSpec.describe AddressResolver do
       stub_search
 
       address = described_class.new.resolve(
-        query,
-        persist: false
+        query
       )
 
-      expect(address).to be_a(Address)
+      expect(address).to be_a(ResolvedAddress)
       expect(address).to have_attributes(
         zip_code: "32114",
         country_code: "US",
@@ -55,8 +54,7 @@ RSpec.describe AddressResolver do
       stub_search
 
       described_class.new(user_agent: "ForecastApp/1.0 (spec)").resolve(
-        query,
-        persist: false
+        query
       )
 
       expect(
@@ -78,8 +76,7 @@ RSpec.describe AddressResolver do
       stub_search
 
       described_class.new.resolve(
-        messy_query,
-        persist: false
+        messy_query
       )
 
       expect(
@@ -100,7 +97,7 @@ RSpec.describe AddressResolver do
         .with(query: hash_including("q" => fallback_query))
         .to_return(status: 200, body: [ result ].to_json, headers: json_headers)
 
-      address = described_class.new.resolve(query, persist: false)
+      address = described_class.new.resolve(query)
 
       expect(address).to have_attributes(zip_code: "32114", city: "Daytona Beach")
       expect(
@@ -124,7 +121,7 @@ RSpec.describe AddressResolver do
           .with(query: hash_including("q" => fallback_query))
           .to_return(status: 200, body: [ result ].to_json, headers: json_headers)
 
-        address = described_class.new.resolve(query, persist: false)
+        address = described_class.new.resolve(query)
 
         expect(address).to have_attributes(zip_code: "32114", city: "Daytona Beach")
         expect(
@@ -136,14 +133,14 @@ RSpec.describe AddressResolver do
     it "returns nil when the fallback search also has no results" do
       stub_search([])
 
-      expect(described_class.new.resolve(query, persist: false)).to be_nil
+      expect(described_class.new.resolve(query)).to be_nil
       expect(a_request(:get, search_url)).to have_been_made.twice
     end
 
     it "does not retry when removing the country leaves a blank query" do
       stub_search([])
 
-      expect(described_class.new.resolve("United States", persist: false)).to be_nil
+      expect(described_class.new.resolve("United States")).to be_nil
       expect(a_request(:get, search_url)).to have_been_made.once
     end
 
@@ -151,8 +148,8 @@ RSpec.describe AddressResolver do
       stub_search
       resolver = described_class.new
 
-      first = resolver.resolve(query, persist: false)
-      second = resolver.resolve(messy_query, persist: false)
+      first = resolver.resolve(query)
+      second = resolver.resolve(messy_query)
 
       expect(first).to have_attributes(zip_code: "32114")
       expect(second).to have_attributes(zip_code: "32114")
@@ -166,15 +163,15 @@ RSpec.describe AddressResolver do
         cache_ttl: 30.days
       )
 
-      resolver.resolve(query, persist: false)
+      resolver.resolve(query)
 
       travel(30.days - 1.minute) do
-        resolver.resolve(query, persist: false)
+        resolver.resolve(query)
         expect(a_request(:get, search_url)).to have_been_made.once
       end
 
       travel(31.days) do
-        resolver.resolve(query, persist: false)
+        resolver.resolve(query)
         expect(a_request(:get, search_url)).to have_been_made.twice
       end
     end
@@ -183,22 +180,39 @@ RSpec.describe AddressResolver do
       stub_search([])
       resolver = described_class.new
 
-      expect(resolver.resolve("No such place", persist: false)).to be_nil
-      expect(resolver.resolve("No such place", persist: false)).to be_nil
+      expect(resolver.resolve("No such place")).to be_nil
+      expect(resolver.resolve("No such place")).to be_nil
       expect(a_request(:get, search_url)).to have_been_made.twice
+    end
+
+    it "protects the address cache against stampedes" do
+      cache = ActiveSupport::Cache::MemoryStore.new
+      resolver = described_class.new(cache: cache, race_condition_ttl: 7.seconds)
+
+      expect(cache).to receive(:fetch).with(
+        anything,
+        hash_including(
+          expires_in: 30.days,
+          race_condition_ttl: 7.seconds,
+          skip_nil: true
+        )
+      ).and_call_original
+
+      stub_search
+      resolver.resolve(query)
     end
 
     it "returns nil for a blank query without making a request" do
       resolver = described_class.new
 
-      expect(resolver.resolve("   ", persist: false)).to be_nil
+      expect(resolver.resolve("   ")).to be_nil
       expect(a_request(:get, search_url)).not_to have_been_made
     end
 
     it "returns nil when the result has no coordinates" do
       stub_search([ { "address" => { "city" => "Nowhere" } } ])
 
-      expect(described_class.new.resolve("Nowhere", persist: false)).to be_nil
+      expect(described_class.new.resolve("Nowhere")).to be_nil
     end
 
     it "falls back through the available locality fields" do
@@ -212,32 +226,13 @@ RSpec.describe AddressResolver do
         }
       } ])
 
-      address = described_class.new.resolve("Example", persist: false)
+      address = described_class.new.resolve("Example")
 
       expect(address).to have_attributes(
         city: "Example Town",
         region_state: "Example County",
         country_code: "DE"
       )
-    end
-
-    it "persists a resolved address by default" do
-      stub_search
-      resolver = described_class.new
-
-      expect { resolver.resolve(query) }
-        .to change(Address, :count).by(1)
-
-      expect(Address.last).to have_attributes(zip_code: "32114", city: "Daytona Beach")
-      expect(Address.last.latitude).to be_within(0.0001).of(29.1858)
-    end
-
-    it "does not persist when persist is false" do
-      stub_search
-      resolver = described_class.new
-
-      expect { resolver.resolve(query, persist: false) }
-        .not_to change(Address, :count)
     end
   end
 
@@ -250,7 +245,7 @@ RSpec.describe AddressResolver do
 
       expect(resolver).to receive(:sleep).with(0.75)
 
-      resolver.resolve(query, persist: false)
+      resolver.resolve(query)
     end
 
     it "does not sleep for the first request" do
@@ -260,7 +255,7 @@ RSpec.describe AddressResolver do
 
       expect(resolver).not_to receive(:sleep)
 
-      resolver.resolve(query, persist: false)
+      resolver.resolve(query)
       expect(described_class.last_request_at).to eq(100.25)
     end
 
@@ -269,7 +264,7 @@ RSpec.describe AddressResolver do
       resolver = described_class.new(rate_limit_interval: 1.0)
       allow(resolver).to receive(:monotonic_now).and_return(200.0)
 
-      expect { resolver.resolve(query, persist: false) }
+      expect { resolver.resolve(query) }
         .to raise_error(AddressResolver::Error)
       expect(described_class.last_request_at).to eq(200.0)
     end
@@ -279,28 +274,28 @@ RSpec.describe AddressResolver do
     it "raises an error for a non-success response" do
       stub_search(status: 503)
 
-      expect { described_class.new.resolve(query, persist: false) }
+      expect { described_class.new.resolve(query) }
         .to raise_error(AddressResolver::Error, /Nominatim request failed with 503/)
     end
 
     it "raises an error for invalid JSON" do
       stub_request(:get, search_url).to_return(status: 200, body: "{not-json")
 
-      expect { described_class.new.resolve(query, persist: false) }
+      expect { described_class.new.resolve(query) }
         .to raise_error(AddressResolver::Error, /Nominatim returned invalid JSON/)
     end
 
     it "raises an error when the request times out" do
       stub_request(:get, search_url).to_timeout
 
-      expect { described_class.new.resolve(query, persist: false) }
+      expect { described_class.new.resolve(query) }
         .to raise_error(AddressResolver::Error, /Nominatim request failed/)
     end
 
     it "returns nil when the response is not an array" do
       stub_search({ "unexpected" => true })
 
-      expect(described_class.new.resolve(query, persist: false)).to be_nil
+      expect(described_class.new.resolve(query)).to be_nil
     end
   end
 
@@ -314,8 +309,7 @@ RSpec.describe AddressResolver do
       stub_request(:get, custom_url).to_return(status: 200, body: [ result ].to_json)
 
       described_class.new(base_url: "https://nominatim.example.test/").resolve(
-        query,
-        persist: false
+        query
       )
 
       expect(a_request(:get, custom_url)).to have_been_made.once
@@ -328,7 +322,7 @@ RSpec.describe AddressResolver do
       allow(client).to receive(:get_json).and_return([ result ])
 
       address = described_class.new(http_client: client)
-                                 .resolve(query, persist: false)
+                                 .resolve(query)
 
       expect(address.zip_code).to eq("32114")
       expect(client).to have_received(:get_json).with(search_url, headers: hash_including("Accept"))
@@ -339,7 +333,7 @@ RSpec.describe AddressResolver do
       allow(client).to receive(:get).and_return([ result ])
 
       address = described_class.new(http_client: client)
-                                 .resolve(query, persist: false)
+                                 .resolve(query)
 
       expect(address.zip_code).to eq("32114")
       expect(client).to have_received(:get).with(search_url, headers: hash_including("Accept"))
@@ -363,6 +357,6 @@ RSpec.describe AddressResolver do
       "address" => { "city" => "Nowhere" }
     } ])
 
-    expect(described_class.new.resolve("Nowhere", persist: false)).to be_nil
+    expect(described_class.new.resolve("Nowhere")).to be_nil
   end
 end
