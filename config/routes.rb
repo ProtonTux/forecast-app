@@ -12,4 +12,11 @@ Rails.application.routes.draw do
   # Address or ZIP/postal code weather search.
   root "weather#index"
   get "weather", to: "weather#index", as: :weather
+
+  # Versioned JSON API.
+  namespace :api do
+    namespace :v1 do
+      resources :forecasts, only: :index
+    end
+  end
 end

@@ -10,6 +10,7 @@ Rails.application.config.x.weather.tap do |weather|
                            .reject(&:empty?)
 
   weather.cache_ttl = 30.minutes
+  weather.race_condition_ttl = 10.seconds
 
   weather.user_agent = ENV.fetch(
     "WEATHER_USER_AGENT",

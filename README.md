@@ -4,6 +4,70 @@ A small Rails weather application. Enter a street address or ZIP/postal code and
 
 The forecast is displayed in a responsive Bootstrap card with a green **Cached** badge or an amber **New request** badge.
 
+A versioned JSON API serves the same forecast data at `GET /api/v1/forecasts`.
+
+## JSON API
+
+Request a forecast with a free-form address or ZIP/postal code:
+
+```bash
+curl --get "http://localhost:3000/api/v1/forecasts" \
+  --data-urlencode "query=1801 West International Speedway Blvd, Daytona Beach, Florida, United States 32114"
+```
+
+Successful responses use a `data` envelope:
+
+```json
+{
+  "data": {
+    "location": {
+      "city": "Daytona Beach",
+      "region": "Florida",
+      "postal_code": "32114",
+      "country": "US",
+      "timezone": "America/New_York",
+      "latitude": 29.1858,
+      "longitude": -81.07
+    },
+    "current": {
+      "time": "2026-11-04T12:00:00Z",
+      "condition": "Sunny",
+      "temperature_c": 25.0
+    },
+    "hourly": [],
+    "daily": [],
+    "sources": [ "noaa", "open_meteo" ],
+    "provider_errors": {},
+    "generated_at": "2026-11-04T12:00:00Z",
+    "cache_hit": true
+  }
+}
+```
+
+Optional sections are always present: `hourly` and `daily` are arrays,
+`provider_errors` and `location` are objects, and `current` may be `null`.
+
+Errors use an `error` envelope with a stable code:
+
+```json
+{
+  "error": {
+    "code": "address_not_found",
+    "message": "We could not find an address or ZIP/postal code matching ..."
+  }
+}
+```
+
+| Condition | Status | Code |
+| --- | --- | --- |
+| Missing or blank `query` | `422` | `invalid_query` |
+| Address not found | `404` | `address_not_found` |
+| Nominatim unavailable | `503` | `address_lookup_unavailable` |
+| All weather providers failed | `503` | `weather_unavailable` |
+| Unexpected failure | `500` | `internal_error` |
+
+Alternatively there is a HTML interface available at `/` and `/weather`.
+
 ## Ruby version
 
 - Ruby 3.4.12
@@ -37,7 +101,7 @@ Configuration is environment-variable driven:
 - `forecast_app:cache:test`
 - `forecast_app:cache:production`
 
-Forecast responses expire after **30 minutes**. Successful Nominatim lookups expire after **30 days**.
+Forecast responses expire after **30 minutes**. Successful Nominatim lookups expire after **30 days**. Both cache paths use a 10-second `race_condition_ttl` so an expiring entry can be served while one process refreshes it, reducing cache stampedes.
 
 Set a descriptive `NOMINATIM_USER_AGENT` that identifies your deployment and a real contact email or URL before using the application in production. Nominatim rejects placeholder contact domains such as `example.com` with HTTP 403.
 
@@ -202,7 +266,8 @@ docker compose up --build
 The weather feature is organized as service objects under `app/services`:
 
 - `AddressResolver` resolves a user-entered address through OpenStreetMap
-  Nominatim and returns an `Address` with coordinates and postal code.
+  Nominatim and returns an immutable `ResolvedAddress` value object with
+  coordinates and postal code.
 - `Weather::WeatherService` resolves the address, asks the configured providers
   for a forecast, combines their results, and caches the response.
 - `Weather::ProviderFactory` builds the configured provider strategies.
@@ -210,7 +275,7 @@ The weather feature is organized as service objects under `app/services`:
 - `Weather::Providers::Base` defines the provider adapter interface.
 - `Weather::Providers::Noaa` and `Weather::Providers::OpenMeteo` implement it.
 
-Forecasts and observations are **not** ActiveRecord models. Normalized forecast responses and Nominatim lookups are stored only in `Rails.cache`, which uses Redis in development, test, and production with an environment-specific namespace.
+Forecasts and observations are **not** ActiveRecord models. Normalized forecast responses and Nominatim lookups are stored only in `Rails.cache`, which uses Redis in development, test, and production with an environment-specific namespace. Resolved addresses are returned as `ResolvedAddress` value objects and are not written to PostgreSQL.
 
 ### Units
 
