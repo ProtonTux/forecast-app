@@ -15,6 +15,13 @@ services:
       RAILS_ENV: development
       RAILS_MAX_THREADS: 5
       REDIS_URL: redis://redis:6379/0
+      ADDRESS_RESOLVER: ${ADDRESS_RESOLVER:-nominatim}
+      NOMINATIM_URL: ${NOMINATIM_URL:-https://nominatim.openstreetmap.org}
+      NOMINATIM_USER_AGENT: ${NOMINATIM_USER_AGENT:-}
+      PHOTON_URL: ${PHOTON_URL:-https://photon.komoot.io}
+      PHOTON_USER_AGENT: ${PHOTON_USER_AGENT:-}
+      OPEN_METEO_GEOCODING_URL: ${OPEN_METEO_GEOCODING_URL:-https://geocoding-api.open-meteo.com}
+      OPEN_METEO_GEOCODING_USER_AGENT: ${OPEN_METEO_GEOCODING_USER_AGENT:-}
     depends_on:
       db:
         condition: service_healthy

@@ -239,9 +239,9 @@ RSpec.describe AddressResolver do
   describe "rate limiting" do
     it "waits before making a request within the rate limit interval" do
       stub_search
-      resolver = described_class.new(rate_limit_interval: 1.0)
+      resolver = AddressResolution::Nominatim.new(rate_limit_interval: 1.0)
       allow(resolver).to receive(:monotonic_now).and_return(100.25)
-      described_class.last_request_at = 100.0
+      AddressResolution::Nominatim.last_request_at = 100.0
 
       expect(resolver).to receive(:sleep).with(0.75)
 
@@ -250,23 +250,23 @@ RSpec.describe AddressResolver do
 
     it "does not sleep for the first request" do
       stub_search
-      resolver = described_class.new(rate_limit_interval: 1.0)
+      resolver = AddressResolution::Nominatim.new(rate_limit_interval: 1.0)
       allow(resolver).to receive(:monotonic_now).and_return(100.25)
 
       expect(resolver).not_to receive(:sleep)
 
       resolver.resolve(query)
-      expect(described_class.last_request_at).to eq(100.25)
+      expect(AddressResolution::Nominatim.last_request_at).to eq(100.25)
     end
 
     it "records the request time even when the request fails" do
       stub_search(status: 503)
-      resolver = described_class.new(rate_limit_interval: 1.0)
+      resolver = AddressResolution::Nominatim.new(rate_limit_interval: 1.0)
       allow(resolver).to receive(:monotonic_now).and_return(200.0)
 
       expect { resolver.resolve(query) }
         .to raise_error(AddressResolver::Error)
-      expect(described_class.last_request_at).to eq(200.0)
+      expect(AddressResolution::Nominatim.last_request_at).to eq(200.0)
     end
   end
 
@@ -301,7 +301,7 @@ RSpec.describe AddressResolver do
 
   describe "configuration" do
     it "does not use a placeholder contact address in the default User-Agent" do
-      expect(described_class::DEFAULT_USER_AGENT).not_to include("example.com")
+      expect(AddressResolution::Base::DEFAULT_USER_AGENT).not_to include("example.com")
     end
 
     it "uses a custom base URL" do
@@ -341,12 +341,24 @@ RSpec.describe AddressResolver do
   end
 
   describe "#reset_rate_limit!" do
-    it "clears the class rate limit and returns self" do
-      described_class.last_request_at = 123.0
-      resolver = described_class.new
+    it "clears the adapter rate limit and returns self" do
+      AddressResolution::Nominatim.last_request_at = 123.0
+      resolver = AddressResolution::Nominatim.new
 
       expect(resolver.reset_rate_limit!).to be(resolver)
-      expect(described_class.last_request_at).to be_nil
+      expect(AddressResolution::Nominatim.last_request_at).to be_nil
+    end
+
+    it "clears every adapter rate limit from the facade" do
+      AddressResolution::Nominatim.last_request_at = 123.0
+      AddressResolution::Photon.last_request_at = 123.0
+      AddressResolution::OpenMeteo.last_request_at = 123.0
+
+      described_class.reset_rate_limit!
+
+      expect(AddressResolution::Nominatim.last_request_at).to be_nil
+      expect(AddressResolution::Photon.last_request_at).to be_nil
+      expect(AddressResolution::OpenMeteo.last_request_at).to be_nil
     end
   end
 
@@ -358,5 +370,125 @@ RSpec.describe AddressResolver do
     } ])
 
     expect(described_class.new.resolve("Nowhere")).to be_nil
+  end
+
+  describe "provider selection" do
+    let(:photon_url) { %r{\Ahttps://photon\.komoot\.io/api\?} }
+    let(:open_meteo_url) { %r{\Ahttps://geocoding-api\.open-meteo\.com/v1/search\?} }
+
+    let(:photon_payload) do
+      {
+        "features" => [ {
+          "properties" => {
+            "city" => "Daytona Beach",
+            "state" => "Florida",
+            "postcode" => "32114",
+            "countrycode" => "US"
+          },
+          "geometry" => { "coordinates" => [ -81.0682306, 29.191679 ] }
+        } ]
+      }
+    end
+
+    let(:open_meteo_payload) do
+      {
+        "results" => [ {
+          "name" => "Daytona Beach",
+          "latitude" => 29.21081,
+          "longitude" => -81.02283,
+          "country_code" => "US",
+          "admin1" => "Florida",
+          "timezone" => "America/New_York",
+          "postcodes" => [ "32114" ]
+        } ]
+      }
+    end
+
+    def stub_provider(url, payload)
+      stub_request(:get, url)
+        .to_return(status: 200, body: payload.to_json,
+                   headers: { "Content-Type" => "application/json" })
+    end
+
+    it "uses Nominatim by default" do
+      expect(described_class.new.resolver).to be_a(AddressResolution::Nominatim)
+    end
+
+    it "builds the configured provider" do
+      resolver = described_class.new(provider: "photon")
+
+      expect(resolver.resolver).to be_a(AddressResolution::Photon)
+      expect(resolver.resolver.provider_key).to eq("photon")
+    end
+
+    it "accepts provider aliases" do
+      expect(described_class.new(provider: "komoot").resolver)
+        .to be_a(AddressResolution::Photon)
+      expect(described_class.new(provider: "open-meteo").resolver)
+        .to be_a(AddressResolution::OpenMeteo)
+    end
+
+    it "delegates resolution to Photon" do
+      stub_provider(photon_url, photon_payload)
+      resolver = described_class.new(provider: "photon", cache: ActiveSupport::Cache::MemoryStore.new)
+
+      address = resolver.resolve(query)
+
+      expect(address).to have_attributes(
+        city: "Daytona Beach",
+        zip_code: "32114",
+        geocoding_source: "photon"
+      )
+      expect(address.latitude).to be_within(0.0001).of(29.191679)
+      expect(address.longitude).to be_within(0.0001).of(-81.0682306)
+    end
+
+    it "delegates resolution to Open-Meteo" do
+      stub_provider(open_meteo_url, open_meteo_payload)
+      resolver = described_class.new(provider: "open_meteo", cache: ActiveSupport::Cache::MemoryStore.new)
+
+      address = resolver.resolve(query)
+
+      expect(address).to have_attributes(
+        city: "Daytona Beach",
+        zip_code: "32114",
+        timezone: "America/New_York",
+        geocoding_source: "open_meteo"
+      )
+    end
+
+    it "includes the provider name in the cache key" do
+      cache = ActiveSupport::Cache::MemoryStore.new
+      resolver = described_class.new(provider: "photon", cache: cache)
+      digest = Digest::SHA256.hexdigest(normalized_query)
+      expected_key = "address_resolver:photon:v1:#{digest}"
+
+      expect(cache).to receive(:fetch)
+        .with(expected_key, hash_including(expires_in: 30.days, skip_nil: true))
+        .and_call_original
+      stub_provider(photon_url, photon_payload)
+
+      expect(resolver.resolve(query)).to have_attributes(city: "Daytona Beach")
+    end
+
+    it "supports the call alias" do
+      stub_search
+      resolver = described_class.new(cache: ActiveSupport::Cache::MemoryStore.new)
+
+      expect(resolver.call(query)).to have_attributes(zip_code: "32114")
+    end
+
+    it "resets the active resolver rate limit" do
+      resolver = described_class.new(provider: "photon")
+      AddressResolution::Photon.last_request_at = 10.0
+
+      expect(resolver.reset_rate_limit!).to be(resolver)
+      expect(AddressResolution::Photon.last_request_at).to be_nil
+    end
+
+    it "raises for an unknown provider" do
+      expect { described_class.new(provider: "bogus") }
+        .to raise_error(AddressResolution::UnknownResolverError)
+    end
   end
 end
